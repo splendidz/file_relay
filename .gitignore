@@ -1,0 +1,15 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# 실행 시 exe 옆에 생기는 설정/데이터 (포터블 모드)
+FileRelay.jsonc
+FileRelay.jsonc.broken
+FileRelay_data/
+
+# 개발 도구
+.claude/
+__pycache__/
+*.pyc
