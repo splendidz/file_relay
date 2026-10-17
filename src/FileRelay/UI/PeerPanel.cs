@@ -19,6 +19,7 @@ namespace FileRelay.UI
         readonly HeaderBar _head;
         readonly MeCard _me;
         readonly FlatButton _add;
+        readonly Timer _clock = new Timer { Interval = 20000 };
 
         public event Action<Peer> PeerSelected;
         public event Action<Peer> PeerActivated;
@@ -81,7 +82,16 @@ namespace FileRelay.UI
             _c.StatusChanged += () => _me.Invalidate();
             _c.ConfigChanged += () => _me.Invalidate();
             _c.ServerStateChanged += () => _me.Invalidate();
+            // '오프라인 · n분 전' 같은 상대 시각과 내 주소를 가끔 갱신 (바뀐 줄만 다시 그린다).
+            _clock.Tick += (s, e) => { if (Visible) { Rebuild(false); _me.RefreshAddress(); } };
+            _clock.Start();
             Rebuild(true);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) _clock.Dispose();
+            base.Dispose(disposing);
         }
 
         public Peer SelectedPeer => _list.SelectedPeer;
@@ -108,15 +118,21 @@ namespace FileRelay.UI
             string q = _search.Text.Trim();
             var vis = all.Where(p => q.Length == 0 || p.DisplayName.IndexOf(q, StringComparison.CurrentCultureIgnoreCase) >= 0 ||
                                      p.Host.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0 || (p.Name ?? "").IndexOf(q, StringComparison.CurrentCultureIgnoreCase) >= 0).ToList();
-            _list.SetPeers(vis, force, q.Length > 0);
-            _me.Invalidate();
+            _list.SetPeers(vis, force);
         }
 
-        /// <summary>피어 목록 상자 (오너드로우, 묶음 머리글 포함).</summary>
+        /// <summary>
+        /// 피어 목록 상자 (오너드로우, 묶음 머리글 포함).
+        /// 기본 ListBox 는 다시 그릴 때 배경 전체를 먼저 지우고(WM_ERASEBKGND) 항목을 하나씩 그려서 깜박인다 —
+        /// 배경은 항목 아래 빈 곳만 칠하고, 각 줄은 메모리에 다 그린 뒤 한 번에 옮긴다.
+        /// 피어 정보가 바뀌어도 구성이 같으면 실제로 달라진 줄만 다시 그린다.
+        /// </summary>
         sealed class PeerListBox : ListBox
         {
             int _hot = -1;
             string _sig = "";
+            readonly List<string> _keys = new List<string>();   // 줄마다 그려지는 값 — 바뀐 줄만 다시 그리는 데 쓴다
+            readonly BufferedGraphicsContext _buffer = new BufferedGraphicsContext { MaximumBuffer = new Size(4096, 1024) };
             bool _guard;
             Peer _lastSelected;
             public event Action<Peer> SelectedPeerChanged;
@@ -129,8 +145,14 @@ namespace FileRelay.UI
                 ForeColor = Theme.Text;
                 Font = Theme.Ui;
                 IntegralHeight = false;
-                SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+                SetStyle(ControlStyles.ResizeRedraw, true);   // 폭이 바뀌면 오른쪽 배지·말줄임 위치가 달라지므로 다시 그린다
                 Theme.ApplyControlTheme(this);
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing) _buffer.Dispose();
+                base.Dispose(disposing);
             }
 
             public Peer SelectedPeer => SelectedItem as Peer;
@@ -162,7 +184,14 @@ namespace FileRelay.UI
             static int Group(Peer p) =>
                 p.Blocked ? 3 : p.State == PeerState.Incoming ? 0 : p.IsOnline && p.State == PeerState.Paired ? 1 : 2;
 
-            public void SetPeers(List<Peer> peers, bool force, bool searching)
+            /// <summary>줄에 그려지는 값을 모두 담은 키 — 같으면 다시 그릴 필요가 없다.</summary>
+            static string VisualKey(object x)
+            {
+                if (!(x is Peer p)) return (string)x;
+                return string.Join("\u001f", p.DisplayName, p.Name, p.Alias, p.Id, p.Host, p.Presence, p.State, p.Blocked, p.Unread, FilePane.PeerStatusText(p));
+            }
+
+            public void SetPeers(List<Peer> peers, bool force)
             {
                 var ordered = peers.OrderBy(Group).ThenBy(p => p.DisplayName, NaturalComparer.Instance).ToList();
                 var items = new List<object>();
@@ -173,8 +202,19 @@ namespace FileRelay.UI
                     items.AddRange(g);
                 }
                 string sig = string.Join("|", items.Select(x => x is Peer p ? p.GetHashCode().ToString() : (string)x));
-                if (!force && sig == _sig) { Invalidate(); return; }
+                var keys = items.Select(VisualKey).ToList();
+                if (!force && sig == _sig)
+                {
+                    // 구성이 같으면 값이 바뀐 줄만 다시 그린다 (하트비트마다 목록 전체를 그리지 않게).
+                    for (int i = 0; i < keys.Count && i < Items.Count; i++)
+                        if (i >= _keys.Count || keys[i] != _keys[i]) Invalidate(GetItemRectangle(i));
+                    _keys.Clear();
+                    _keys.AddRange(keys);
+                    return;
+                }
                 _sig = sig;
+                _keys.Clear();
+                _keys.AddRange(keys);
                 var sel = SelectedPeer ?? _lastSelected;
                 int top = TopIndex;
                 _guard = true;
@@ -239,45 +279,91 @@ namespace FileRelay.UI
                 _hot = -1;
             }
 
-            protected override void OnPaintBackground(PaintEventArgs e)
-            {
-                using (var b = new SolidBrush(BackColor)) e.Graphics.FillRectangle(b, ClientRectangle);
-            }
+            // 선택 줄 색은 포커스 여부에 따라 다르다.
+            protected override void OnGotFocus(EventArgs e) { base.OnGotFocus(e); InvalidateSelected(); }
+            protected override void OnLostFocus(EventArgs e) { base.OnLostFocus(e); InvalidateSelected(); }
+            void InvalidateSelected() { if (SelectedIndex >= 0 && SelectedIndex < Items.Count) Invalidate(GetItemRectangle(SelectedIndex)); }
 
             protected override void WndProc(ref Message m)
             {
-                base.WndProc(ref m);
+                if (m.Msg == Native.WM_ERASEBKGND)
+                {
+                    // 항목 자리는 OnDrawItem 이 통째로 칠하므로 지우지 않는다 — 지웠다 다시 그리는 것이 깜박임의 원인.
+                    using (var g = Graphics.FromHdc(m.WParam)) PaintEmptyArea(g);
+                    m.Result = (IntPtr)1;
+                    return;
+                }
                 if (m.Msg == Native.WM_PAINT && Items.Count == 0)
                 {
-                    using (var g = CreateGraphics())
+                    // 빈 목록은 기본 그리기가 안내 문구를 덮어쓰므로 직접 그린다.
+                    if (m.WParam != IntPtr.Zero)
                     {
-                        var r = new Rectangle(Theme.S(16), Theme.S(30), Width - Theme.S(32), Theme.S(120));
+                        using (var g = Graphics.FromHdc(m.WParam)) PaintEmptyArea(g);
+                    }
+                    else
+                    {
+                        Native.BeginPaint(Handle, out var ps);
+                        using (var g = Graphics.FromHdc(ps.hdc)) PaintEmptyArea(g);
+                        Native.EndPaint(Handle, ref ps);
+                    }
+                    m.Result = IntPtr.Zero;
+                    return;
+                }
+                base.WndProc(ref m);
+            }
+
+            /// <summary>마지막 항목 아래 빈 곳 (목록이 비었으면 전체 + 안내 문구).</summary>
+            void PaintEmptyArea(Graphics target)
+            {
+                var cr = ClientRectangle;
+                int n = Items.Count;
+                int y = n > 0 ? Math.Max(0, GetItemRectangle(n - 1).Bottom) : 0;
+                if (y >= cr.Height || cr.Width <= 0) return;
+                var area = new Rectangle(0, y, cr.Width, cr.Height - y);
+                using (var buf = _buffer.Allocate(target, area))
+                {
+                    var g = buf.Graphics;
+                    g.ResetTransform();   // TextRenderer 는 이동 변환을 무시하므로 버퍼 좌표(0,0 기준)로 그린다
+                    using (var b = new SolidBrush(BackColor)) g.FillRectangle(b, 0, 0, area.Width, area.Height);
+                    if (n == 0)
+                    {
+                        var r = new Rectangle(Theme.S(16), Theme.S(30) - y, cr.Width - Theme.S(32), Theme.S(120));
                         TextRenderer.DrawText(g, T("peers.empty"), Theme.Small, r, Theme.TextFaint, BackColor,
                             TextFormatFlags.HorizontalCenter | TextFormatFlags.WordBreak);
                     }
+                    buf.Render(target);
                 }
             }
 
             protected override void OnDrawItem(DrawItemEventArgs e)
             {
-                if (e.Index < 0 || e.Index >= Items.Count) return;
-                var g = e.Graphics;
+                if (e.Index < 0 || e.Index >= Items.Count || e.Bounds.Width <= 0 || e.Bounds.Height <= 0) return;
+                // 배경 → 카드 → 글자 순서로 그리는 과정이 화면에 보이지 않도록 메모리에 다 그린 뒤 한 번에 옮긴다.
+                using (var buf = _buffer.Allocate(e.Graphics, e.Bounds))
+                {
+                    var g = buf.Graphics;
+                    g.ResetTransform();   // TextRenderer 는 이동 변환을 무시하므로 줄 기준 좌표(0,0)로 그린다
+                    DrawRow(g, new Rectangle(Point.Empty, e.Bounds.Size), e.Index, (e.State & DrawItemState.Selected) != 0);
+                    buf.Render(e.Graphics);
+                }
+            }
+
+            void DrawRow(Graphics g, Rectangle r, int index, bool sel)
+            {
                 Theme.HQ(g);
-                var r = e.Bounds;
                 using (var b = new SolidBrush(BackColor)) g.FillRectangle(b, r);
-                var item = Items[e.Index];
+                var item = Items[index];
                 if (item is string head)
                 {
                     Theme.DrawText(g, head.ToUpperInvariant(), Theme.SmallBold, Theme.TextFaint, new Rectangle(r.X + Theme.S(16), r.Y + Theme.S(6), r.Width - Theme.S(20), r.Height - Theme.S(6)));
                     return;
                 }
                 var p = (Peer)item;
-                bool sel = (e.State & DrawItemState.Selected) != 0;
                 var card = new Rectangle(r.X + Theme.S(6), r.Y + Theme.S(2), r.Width - Theme.S(12), r.Height - Theme.S(4));
                 if (sel) Theme.FillRound(g, Focused ? Theme.Selection : Theme.SelectionInactive, card, Theme.S(8));
-                else if (e.Index == _hot) Theme.FillRound(g, Theme.Hover, card, Theme.S(8));
+                else if (index == _hot) Theme.FillRound(g, Theme.Hover, card, Theme.S(8));
                 int av = Theme.S(36);
-                var bgForRing = sel ? (Focused ? Theme.Selection : Theme.SelectionInactive) : e.Index == _hot ? Theme.Hover : BackColor;
+                var bgForRing = sel ? (Focused ? Theme.Selection : Theme.SelectionInactive) : index == _hot ? Theme.Hover : BackColor;
                 var img = Icons.Avatar(p.DisplayName, string.IsNullOrEmpty(p.Id) ? p.Host : p.Id, av, p.Presence, p.State, p.Blocked, bgForRing);
                 g.DrawImage(img, card.X + Theme.S(8), card.Y + (card.Height - av) / 2);
                 int x = card.X + Theme.S(8) + av + Theme.S(10);
@@ -314,6 +400,13 @@ namespace FileRelay.UI
         sealed class MeCard : BufferedPanel
         {
             bool _hover;
+            string _address = "";
+
+            /// <summary>내 IP 가 바뀌었을 때만 다시 그린다.</summary>
+            public void RefreshAddress()
+            {
+                if (NetUtil.PrimaryIPv4() + ":" + AppCore.I.Config.Port != _address) Invalidate();
+            }
 
             public MeCard()
             {
@@ -345,7 +438,8 @@ namespace FileRelay.UI
                 string st = c.Http.Running ? Fmt.Presence(c.MyStatus) + (c.StatusIsAuto ? " " + T("peers.auto") : "") : T("peers.serverOff");
                 var ss = Theme.Measure(st, Theme.Small);
                 Theme.DrawText(g, st, Theme.Small, c.Http.Running ? Theme.PresenceColor(c.MyStatus) : Theme.Danger, new Rectangle(x, top + lh + Theme.S(2), ss.Width + Theme.S(4), sh));
-                Theme.DrawText(g, "· " + NetUtil.PrimaryIPv4() + ":" + c.Config.Port, Theme.Small, Theme.TextFaint, new Rectangle(x + ss.Width + Theme.S(6), top + lh + Theme.S(2), w - ss.Width - Theme.S(6), sh));
+                _address = NetUtil.PrimaryIPv4() + ":" + c.Config.Port;
+                Theme.DrawText(g, "· " + _address, Theme.Small, Theme.TextFaint, new Rectangle(x + ss.Width + Theme.S(6), top + lh + Theme.S(2), w - ss.Width - Theme.S(6), sh));
                 var chev = Icons.Glyph('', Theme.S(12), Theme.TextDim);
                 g.DrawImage(chev, card.Right - Theme.S(22), card.Y + (card.Height - chev.Height) / 2);
             }

@@ -14,6 +14,7 @@ namespace FileRelay.Tests
     /// 헤드리스 end-to-end 테스트.
     ///   FileRelay.Tests e2e &lt;작업폴더&gt;        — 노드 B 를 별도 프로세스로 띄우고, 이 프로세스(노드 A)에서 시나리오 실행
     ///   FileRelay.Tests node &lt;데이터폴더&gt;      — 헤드리스 노드 (stdin 에 quit 이 오면 종료)
+    ///   FileRelay.Tests paint &lt;작업폴더&gt; [초]  — 피어 목록이 쓸데없이 다시 그려지지 않는지 점검 (PaintProbe)
     /// </summary>
     static class Program
     {
@@ -26,7 +27,8 @@ namespace FileRelay.Tests
             if (args.Length >= 3 && args[0] == "ui") return UiShots.Run(args[1], args[2]);
             if (args.Length >= 2 && args[0] == "node") return RunNode(args[1]);
             if (args.Length >= 2 && args[0] == "e2e") return RunE2E(args[1]);
-            Console.WriteLine("usage: e2e <workdir> | node <datadir>");
+            if (args.Length >= 2 && args[0] == "paint") return PaintProbe.Run(args[1], args.Length >= 3 ? int.Parse(args[2]) : 20);
+            Console.WriteLine("usage: e2e <workdir> | node <datadir> | ui <datadir> <outdir> | paint <workdir> [seconds]");
             return 2;
         }
 
@@ -57,7 +59,7 @@ namespace FileRelay.Tests
             return 0;
         }
 
-        static void WriteConfig(string root, string name, int port, List<ShareConfig> shares, Action<AppConfig> tweak = null)
+        internal static void WriteConfig(string root, string name, int port, List<ShareConfig> shares, Action<AppConfig> tweak = null)
         {
             Directory.CreateDirectory(root);
             var c = new AppConfig

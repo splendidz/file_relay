@@ -132,6 +132,12 @@ dotnet build tests\FileRelay.Tests -c Debug
 tests\FileRelay.Tests\bin\Debug\FileRelay.Tests.exe e2e %TEMP%\fr_e2e
 ```
 
+피어 목록 다시 그리기 점검 (온라인 피어와 연결 안 되는 피어를 두고, 가만히 있을 때 하트비트가 돌아도 목록을 다시 그리지 않는지, 한 피어만 바뀌면 그 줄만 다시 그리는지 확인 — 화면은 `<작업폴더>\shots` 에 저장):
+
+```
+tests\FileRelay.Tests\bin\Debug\FileRelay.Tests.exe paint %TEMP%\fr_paint 20
+```
+
 ## 폴더 구조
 
 ```

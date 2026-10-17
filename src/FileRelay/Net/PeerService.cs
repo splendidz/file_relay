@@ -186,8 +186,9 @@ namespace FileRelay
             p.LastSeen = DateTime.Now;
             var pres = AccessParse.ParsePresence(c.Status);
             if (pres == Presence.Offline) pres = Presence.Online;
-            if (!SetPresence(p, pres)) _c.Peers.Touch(persist);
-            else if (persist) _c.Peers.Touch(true);
+            // 요청마다 불리므로 목록에 보이는 값이 바뀌었을 때만 알린다 (안 그러면 피어 목록이 계속 다시 그려진다).
+            SetPresence(p, pres);
+            if (persist) _c.Peers.Touch(true);
         }
 
         /// <summary>접속 상태 변경. 바뀌었으면 true.</summary>
@@ -290,16 +291,20 @@ namespace FileRelay
                 }
                 var pres = AccessParse.ParsePresence(r.S("status"));
                 if (pres == Presence.Offline) pres = Presence.Online;
-                if (!SetPresence(p, pres) || persist) _c.Peers.Touch(persist);
+                // 하트비트마다 불리므로 바뀐 것이 있을 때만 알린다.
+                SetPresence(p, pres);
+                if (persist) _c.Peers.Touch(true);
             }
             catch (ApiException ex)
             {
                 p.FailCount++;
-                p.LastError = ex.Code == "bad_key" ? T("err.bad_key") : ex.Message;
+                string err = ex.Code == "bad_key" ? T("err.bad_key") : ex.Message;
+                bool errChanged = p.LastError != err;
+                p.LastError = err;
                 var stale = TimeSpan.FromMilliseconds(IntervalMs * 1.5);
                 if (ex.Status != 0 || (DateTime.Now - p.LastOutboundOk > stale && DateTime.Now - p.LastInbound > stale))
                 {
-                    if (!SetPresence(p, Presence.Offline)) _c.Peers.Touch(false);
+                    if (!SetPresence(p, Presence.Offline) && errChanged) _c.Peers.Touch(false);
                 }
             }
             catch (Exception ex)

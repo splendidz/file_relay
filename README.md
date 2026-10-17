@@ -132,6 +132,12 @@ dotnet build tests\FileRelay.Tests -c Debug
 tests\FileRelay.Tests\bin\Debug\FileRelay.Tests.exe e2e %TEMP%\fr_e2e
 ```
 
+Peer list repaint check — with one online and one unreachable peer, the idle list must not repaint during heartbeats, and a change to one peer must redraw only that row (screenshots are saved to `<workdir>\shots`):
+
+```
+tests\FileRelay.Tests\bin\Debug\FileRelay.Tests.exe paint %TEMP%\fr_paint 20
+```
+
 ## Project layout
 
 ```
