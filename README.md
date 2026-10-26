@@ -5,6 +5,11 @@
 A small resident tool for office LANs: PCs exchange files from **pre-configured shared folders** over HTTP and send each other **sticky-note messages**.
 C# WinForms on .NET Framework 4.8 — a single exe, no external libraries, no installer.
 
+<p align="center">
+  <img src="docs/images/en/main.png" alt="FileRelay main window: peers on the left, This PC and Bob's shared folder side by side, downloads in progress at the bottom" width="100%">
+</p>
+<p align="center"><sub>Peers on the left, <b>This PC ↔ a colleague's share</b> in the middle, the transfer queue at the bottom (downloading from Bob's <i>Design Team</i> share with a speed limit on).</sub></p>
+
 ## Features
 
 | Area | What it does |
@@ -17,6 +22,68 @@ C# WinForms on .NET Framework 4.8 — a single exe, no external libraries, no in
 | Background | Tray icon (unread-note badge), start with Windows, single instance, automatic away. Closing the window asks whether to **keep running in the tray** (default) or quit. |
 | History | Activity in your shares (who downloaded / uploaded / deleted what), a log tab and daily log files. |
 | Language & look | **English and Korean** (automatic from the Windows display language, or chosen in Settings). Light (default) and dark themes. |
+
+## Sticky notes
+
+Send a short message to a colleague who's online. It doesn't open a chat window — it lands on their screen as a small **sticky note**.
+
+<p align="center">
+  <img src="docs/images/en/notes-popup.png" alt="Two notes popped up at the top right of the screen over the main window; the peer list shows unread badges on Bob and Carol" width="100%">
+</p>
+
+**Sending**
+- Select a peer and click **New note** (Ctrl+M), right-click a peer → **Send note…**, or use **Send note** in the tray menu.
+- Type, pick a color with the palette button if you like, and press **Ctrl+Enter**. Choose **All online peers** as the recipient to send the same note to everyone online.
+- Notes go to online peers only (up to 4,000 characters, pasted as plain text).
+
+**Receiving**
+- The note pops up at the **top right of the screen without taking focus**, so whatever you're typing isn't interrupted. If several arrive, they stack.
+- An unread badge appears next to the sender in the peer list, on the **Notes** button and on the tray icon.
+- In **Do not disturb**, notes are kept quietly (tray notification only) and pop up when you switch back.
+
+<p align="center">
+  <img src="docs/images/en/notes-flow.png" alt="A received note, the reply window, and the sender's copy showing Read" width="100%">
+</p>
+<p align="center"><sub>Received note → <b>Reply</b> opens next to it in the same color → the sender's copy shows when it was <b>Read</b>.</sub></p>
+
+**On a note**
+- **Reply** (Ctrl+R) opens a reply window beside the note. The copy button copies the text.
+- The **pin** keeps the note above other windows. **⋯** changes its color, opens the sender's shared folders or the Notes window, or closes all note windows. Esc closes the note.
+- Clicking or closing a note marks it as read, and the sender sees **Read** with the time (read receipts can be turned off).
+
+**Notes window** (Ctrl+Shift+M) keeps every note you received and sent: search by name or text, New / Read status, reply, pop a note out again, mark all read, delete.
+
+<p align="center">
+  <img src="docs/images/en/notes-inbox.png" alt="Notes window with the Received tab: list of notes with time and status, preview of the selected note" width="80%">
+</p>
+
+**Settings → Notes**: pop up right away or tray notification only, sound, always on top, read receipts, window style (pastel sticky note / dark / follow the theme), default color (7 colors) and how long to keep notes.
+
+## More screenshots
+
+**Folder compare** — **Compare** on the toolbar checks same-named items in both panes:
+<b>green</b> = only on this side, <b>orange</b> = different size, <b>blue</b> = newer on this side.
+
+<p align="center">
+  <img src="docs/images/en/compare.png" alt="Folder compare: files only on one side in green, different size in orange, newer in blue" width="100%">
+</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><b>Per-peer access</b> — a share is read-only by default, but Bob gets full control, Carol can add files, and the meeting-room PC doesn't see it at all.</td>
+    <td width="50%" valign="top"><b>Same file name</b> — 7 ways to resolve a conflict, with sizes and dates side by side and "apply to all".</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/en/share-access.png" alt="Edit share dialog with per-peer access rules"></td>
+    <td><img src="docs/images/en/conflict.png" alt="File conflict dialog with overwrite, overwrite if newer, overwrite if size differs, resume, keep both and skip"></td>
+  </tr>
+</table>
+
+**Dark theme** (Settings → Advanced) — note windows follow the theme too.
+
+<p align="center">
+  <img src="docs/images/en/dark.png" alt="FileRelay in the dark theme with two dark-style notes" width="100%">
+</p>
 
 ## Requirements
 
@@ -138,6 +205,13 @@ Peer list repaint check — with one online and one unreachable peer, the idle l
 tests\FileRelay.Tests\bin\Debug\FileRelay.Tests.exe paint %TEMP%\fr_paint 20
 ```
 
+README screenshots — starts three demo peers (plus one offline), browses, downloads and exchanges real notes, and captures each window (they appear on screen for about a minute). The work folder (`D:\Work` below — it must be empty or a previous demo folder) shows up in the local pane. Then `tools/readme_images.py` (Pillow) rounds the corners, adds shadows and writes `docs/images/<en|ko>/`:
+
+```
+for %l in (en ko) do for %t in (light dark) do tests\FileRelay.Tests\bin\Debug\FileRelay.Tests.exe readme D:\Work %TEMP%\fr_shots\%l-%t %l %t
+python tools\readme_images.py %TEMP%\fr_shots
+```
+
 ## Project layout
 
 ```
@@ -150,6 +224,7 @@ src/FileRelay/
   UI/Controls owner-drawn list view, buttons, text boxes, selects, toggles, tabs
   UI/Dialogs  settings, message/input, conflicts, add/find peer, first run, about
   UI/Notes    sticky-note windows, compose, Notes window
-tests/FileRelay.Tests/  e2e tests, screenshot harness
-tools/                  icon generator, i18n merge/check scripts
+tests/FileRelay.Tests/  e2e tests, screenshot harnesses (UI check, README)
+tools/                  icon generator, i18n merge/check scripts, README image builder
+docs/images/            README screenshots (en, ko)
 ```

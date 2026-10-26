@@ -15,6 +15,7 @@ namespace FileRelay.Tests
     ///   FileRelay.Tests e2e &lt;작업폴더&gt;        — 노드 B 를 별도 프로세스로 띄우고, 이 프로세스(노드 A)에서 시나리오 실행
     ///   FileRelay.Tests node &lt;데이터폴더&gt;      — 헤드리스 노드 (stdin 에 quit 이 오면 종료)
     ///   FileRelay.Tests paint &lt;작업폴더&gt; [초]  — 피어 목록이 쓸데없이 다시 그려지지 않는지 점검 (PaintProbe)
+    ///   FileRelay.Tests readme &lt;작업폴더&gt; &lt;출력폴더&gt; &lt;en|ko&gt; [light|dark] — README 스크린샷 (ReadmeShots)
     /// </summary>
     static class Program
     {
@@ -28,7 +29,8 @@ namespace FileRelay.Tests
             if (args.Length >= 2 && args[0] == "node") return RunNode(args[1]);
             if (args.Length >= 2 && args[0] == "e2e") return RunE2E(args[1]);
             if (args.Length >= 2 && args[0] == "paint") return PaintProbe.Run(args[1], args.Length >= 3 ? int.Parse(args[2]) : 20);
-            Console.WriteLine("usage: e2e <workdir> | node <datadir> | ui <datadir> <outdir> | paint <workdir> [seconds]");
+            if (args.Length >= 4 && args[0] == "readme") return ReadmeShots.Run(args[1], args[2], args[3], args.Length >= 5 ? args[4] : "light");
+            Console.WriteLine("usage: e2e <workdir> | node <datadir> | ui <datadir> <outdir> | paint <workdir> [seconds] | readme <workdir> <outdir> <en|ko> [light|dark]");
             return 2;
         }
 
@@ -52,6 +54,33 @@ namespace FileRelay.Tests
                     try { core.Peers.SaveNow(); core.Notes.SaveNow(); }
                     catch (Exception ex) { Console.Error.WriteLine(ex); }
                     Console.WriteLine("DUMPED");
+                    Console.Out.Flush();
+                }
+                // status <online|away|busy> — 내 상태 바꾸기
+                if (line.StartsWith("status "))
+                {
+                    core.SetStatus(AccessParse.ParsePresence(line.Substring(7).Trim()), false);
+                    Console.WriteLine("STATUS");
+                    Console.Out.Flush();
+                }
+                // note <색> <base64(UTF-8 본문)> — 연결된 첫 피어에게 쪽지 (콘솔 코드페이지와 상관없이 한글을 넘기려고 base64)
+                if (line.StartsWith("note "))
+                {
+                    var parts = line.Split(new[] { ' ' }, 3);
+                    try
+                    {
+                        var to = core.Peers.All().First(p => p.CanUse);
+                        core.SendNote(to, Encoding.UTF8.GetString(Convert.FromBase64String(parts[2])), parts[1], "");
+                        Console.WriteLine("NOTED");
+                    }
+                    catch (Exception ex) { Console.WriteLine("NOTE FAIL " + ex.Message); }
+                    Console.Out.Flush();
+                }
+                // readall — 받은 쪽지를 모두 읽음으로 (보낸 쪽에 읽음 확인이 간다)
+                if (line == "readall")
+                {
+                    foreach (var n in core.Notes.All().Where(n => n.Incoming && !n.IsRead).ToList()) core.MarkNoteRead(n);
+                    Console.WriteLine("READ");
                     Console.Out.Flush();
                 }
             }
