@@ -19,7 +19,7 @@
     <Product>FileRelay</Product>
     <AssemblyTitle>FileRelay</AssemblyTitle>
     <Description>FileRelay - 사무실 LAN P2P 파일 공유 및 쪽지</Description>
-    <Copyright>FileRelay</Copyright>
+    <Copyright>Copyright (c) 2026 Soo-Hwan Cho (Splendidz)</Copyright>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 

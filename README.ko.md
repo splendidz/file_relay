@@ -228,3 +228,7 @@ tests/FileRelay.Tests/  e2e 테스트, 화면 캡처 하네스 (UI 점검, READM
 tools/                  아이콘 생성, 다국어 병합/점검 스크립트, README 이미지 생성
 docs/images/            README 스크린샷 (en, ko)
 ```
+
+## 라이선스
+
+[MIT](LICENSE) © 2026 Soo-Hwan Cho (Splendidz)

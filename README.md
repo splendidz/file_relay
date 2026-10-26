@@ -228,3 +228,7 @@ tests/FileRelay.Tests/  e2e tests, screenshot harnesses (UI check, README)
 tools/                  icon generator, i18n merge/check scripts, README image builder
 docs/images/            README screenshots (en, ko)
 ```
+
+## License
+
+[MIT](LICENSE) © 2026 Soo-Hwan Cho (Splendidz)
